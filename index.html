@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wohnungsabnahme & Übergabeprotokoll</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        /* Custom Print Styling */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+            }
+            body {
+                background: white !important;
+                color: black !important;
+                font-size: 12pt;
+            }
+            .page-break {
+                page-break-before: always;
+            }
+            .shadow-lg, .shadow-md, .shadow-sm {
+                box-shadow: none !important;
+            }
+            .border-slate-200 {
+                border-color: #cbd5e1 !important;
+            }
+        }
+        
+        .print-only {
+            display: none;
+        }
+
+        /* Canvas signature animation polish */
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Navigation Header -->
+    <header class="bg-slate-900 text-white sticky top-0 z-40 shadow-md no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-600 p-2 rounded-lg text-white">
+                    <i data-lucide="clipboard-check" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">ImmoProtokoll CH</h1>
+                    <p class="text-xs text-slate-400">Digitale Wohnungsübergabe & Mängeldokumentation</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <button onclick="createNewProtocol()" class="px-3 py-1.5 text-xs sm:text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md transition flex items-center gap-1.5">
+                    <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Neues Protokoll</span>
+                </button>
+                <button onclick="openParifaryModal()" class="px-3 py-1.5 text-xs sm:text-sm font-medium bg-blue-900/50 hover:bg-blue-900 text-blue-200 border border-blue-700/50 rounded-md transition flex items-center gap-1.5">
+                    <i data-lucide="calculator" class="w-4 h-4 text-blue-400"></i>
+                    <span class="hidden sm:inline">Lebensdauer-Rechner</span>
+                </button>
+                <button onclick="triggerPrint()" class="px-3 py-1.5 text-xs sm:text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md shadow-sm transition flex items-center gap-1.5">
+                    <i data-lucide="printer" class="w-4 h-4"></i>
+                    <span>Export / Druck</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Auto-save Status Banner -->
+    <div id="save-status-bar" class="bg-blue-50 border-b border-blue-100 text-blue-700 text-xs px-4 py-1.5 flex items-center justify-between no-print">
+        <div class="max-w-7xl mx-auto w-full flex justify-between items-center">
+            <span class="flex items-center gap-1.5">
+                <i data-lucide="save" class="w-3.5 h-3.5 text-blue-500"></i>
+                <span id="save-status-text">Entwurf automatisch gespeichert</span>
+            </span>
+            <div class="flex items-center gap-3">
+                <button onclick="openLoadModal()" class="underline hover:text-blue-900 font-medium">Gespeicherte Protokolle (<span id="saved-count">0</span>)</button>
+            </div>
+        </div>
+    </div>
+
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        
+        <!-- Navigation Tabs for Steps -->
+        <div class="mb-6 border-b border-slate-200 no-print overflow-x-auto">
+            <nav class="flex space-x-6 whitespace-nowrap min-w-max" aria-label="Tabs">
+                <button onclick="switchTab('stammdaten')" id="tab-btn-stammdaten" class="tab-btn pb-3 px-1 border-b-2 font-medium text-sm border-blue-600 text-blue-600 flex items-center gap-2">
+                    <i data-lucide="building" class="w-4 h-4"></i> 1. Objekt & Parteien
+                </button>
+                <button onclick="switchTab('raeume')" id="tab-btn-raeume" class="tab-btn pb-3 px-1 border-b-2 font-medium text-sm border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2">
+                    <i data-lucide="layout-grid" class="w-4 h-4"></i> 2. Räume & Mängel
+                    <span id="defect-counter-badge" class="hidden bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded-full">0 Mängel</span>
+                </button>
+                <button onclick="switchTab('zähler')" id="tab-btn-zähler" class="tab-btn pb-3 px-1 border-b-2 font-medium text-sm border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2">
+                    <i data-lucide="gauge" class="w-4 h-4"></i> 3. Zählerstände & Schlüssel
+                </button>
+                <button onclick="switchTab('zusammenfassung')" id="tab-btn-zusammenfassung" class="tab-btn pb-3 px-1 border-b-2 font-medium text-sm border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2">
+                    <i data-lucide="file-check" class="w-4 h-4"></i> 4. Vorschau & Signatur
+                </button>
+            </nav>
+        </div>
+
+        <!-- TAB 1: STAMMDATEN -->
+        <section id="tab-content-stammdaten" class="tab-content space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <i data-lucide="home" class="w-5 h-5 text-blue-600"></i> Objektinformationen
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Liegenschaft / Adresse *</label>
+                        <input type="text" id="objekt-adresse" oninput="updateData()" placeholder="Musterstrasse 12, 8000 Zürich" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Wohnung / Etage / Lage</label>
+                        <input type="text" id="objekt-lage" oninput="updateData()" placeholder="3. OG Links (3.5 Zimmer)" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Datum der Abnahme *</label>
+                        <input type="date" id="objekt-datum" oninput="updateData()" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <i data-lucide="users" class="w-5 h-5 text-blue-600"></i> Parteien & Anwesende
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Ausziehender Mieter -->
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                        <h3 class="font-medium text-slate-700 text-sm flex items-center gap-2">
+                            <i data-lucide="user-minus" class="w-4 h-4 text-amber-600"></i> Ausziehende/r Mieter/in
+                        </h3>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Name, Vorname</label>
+                            <input type="text" id="mieter-auszug-name" oninput="updateData()" placeholder="Max Muster" class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Neue Adresse / Kontakt</label>
+                            <input type="text" id="mieter-auszug-kontakt" oninput="updateData()" placeholder="Neustrasse 5, max@example.ch" class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm">
+                        </div>
+                    </div>
+
+                    <!-- Einziehender Mieter -->
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                        <h3 class="font-medium text-slate-700 text-sm flex items-center gap-2">
+                            <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600"></i> Einziehende/r Mieter/in
+                        </h3>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Name, Vorname</label>
+                            <input type="text" id="mieter-einzug-name" oninput="updateData()" placeholder="Anna Beispiel" class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Telefon / E-Mail</label>
+                            <input type="text" id="mieter-einzug-kontakt" oninput="updateData()" placeholder="+41 79 123 45 67, anna@example.ch" class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm">
+                        </div>
+                    </div>
+
+                    <!-- Vermieter/Verwaltung -->
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                        <h3 class="font-medium text-slate-700 text-sm flex items-center gap-2">
+                            <i data-lucide="briefcase" class="w-4 h-4 text-blue-600"></i> Vermieter / Immobilienverwaltung
+                        </h3>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Firma / Name</label>
+                            <input type="text" id="vermieter-name" oninput="updateData()" placeholder="Abrechnungs- & Verwaltungs-AG" class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Vertreten durch</label>
+                            <input type="text" id="vermieter-vertreter" oninput="updateData()" placeholder="Peter Verwaltung" class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm">
+                        </div>
+                    </div>
+
+                    <!-- Weitere Anwesende -->
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                        <h3 class="font-medium text-slate-700 text-sm flex items-center gap-2">
+                            <i data-lucide="users" class="w-4 h-4 text-purple-600"></i> Weitere anwesende Personen
+                        </h3>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Namen & Rolle (z.B. Experten, Zeugen)</label>
+                            <textarea id="anwesende-weitere" oninput="updateData()" rows="3" placeholder="Hans Tester (Experte MV), Laura Muster (Zeugin)" class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button onclick="switchTab('raeume')" class="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2">
+                    Weiter zu Räumen & Mängeln <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- TAB 2: RÄUME & MÄNGEL -->
+        <section id="tab-content-raeume" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-800">Raumübersicht & Mängelerfassung</h2>
+                    <p class="text-xs text-slate-500">Wählen Sie einen Raum, um Mängel zu erfassen oder den Zustand zu protokollieren.</p>
+                </div>
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <input type="text" id="new-room-input" placeholder="Neuer Raum (z.B. Reduit)..." class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm w-full sm:w-48">
+                    <button onclick="addCustomRoom()" class="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-700 whitespace-nowrap flex items-center gap-1">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Raum zufügen
+                    </button>
+                </div>
+            </div>
+
+            <!-- Layout with Room Sidebar / Tabs and Room Details -->
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <!-- Room Selector List (Left Column) -->
+                <div class="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-200 p-3 space-y-1 h-fit" id="room-list-nav">
+                    <!-- Dynamic Room Buttons loaded here -->
+                </div>
+
+                <!-- Active Room Detail view (Right Column) -->
+                <div class="lg:col-span-3 space-y-4" id="room-detail-container">
+                    <!-- Room Detail Rendered dynamically -->
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: ZÄHLERSTÄNDE & SCHLÜSSEL -->
+        <section id="tab-content-zähler" class="tab-content hidden space-y-6">
+            <!-- Schlüsselübergabe -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                        <i data-lucide="key" class="w-5 h-5 text-amber-500"></i> Schlüsselverzeichnis
+                    </h2>
+                    <button onclick="addKeyRow()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-2.5 py-1.5 rounded flex items-center gap-1">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> Schlüsseltyp hinzufügen
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase">
+                                <th class="p-2.5">Schlüssel-Art</th>
+                                <th class="p-2.5 w-24">Anzahl erhalten</th>
+                                <th class="p-2.5 w-24">Anzahl retour</th>
+                                <th class="p-2.5">Bemerkungen / Schlüssel-Nr.</th>
+                                <th class="p-2.5 w-10"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="keys-table-body" class="divide-y divide-slate-100">
+                            <!-- Dynamic Key Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Zählerstände -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                        <i data-lucide="gauge" class="w-5 h-5 text-blue-600"></i> Zählerstände (Strom, Gas, Wasser, Heizung)
+                    </h2>
+                    <button onclick="addMeterRow()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-2.5 py-1.5 rounded flex items-center gap-1">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> Zähler hinzufügen
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase">
+                                <th class="p-2.5">Zähler-Typ</th>
+                                <th class="p-2.5">Zähler-Nummer</th>
+                                <th class="p-2.5">Stand / Wert</th>
+                                <th class="p-2.5">Ablesedatum</th>
+                                <th class="p-2.5 w-10"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="meters-table-body" class="divide-y divide-slate-100">
+                            <!-- Dynamic Meter Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="flex justify-between">
+                <button onclick="switchTab('raeume')" class="px-5 py-2.5 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300 transition flex items-center gap-2">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Zurück zu Räumen
+                </button>
+                <button onclick="switchTab('zusammenfassung')" class="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2">
+                    Weiter zur Vorschau & Signatur <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- TAB 4: PROTOKOLL ZUSAMMENFASSUNG & EXPORT -->
+        <section id="tab-content-zusammenfassung" class="tab-content hidden space-y-6">
+            
+            <!-- Action Toolbar for PDF / Print -->
+            <div class="bg-slate-900 text-white p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 no-print">
+                <div>
+                    <h3 class="font-semibold text-base">Protokoll abschliessen & Drucken</h3>
+                    <p class="text-xs text-slate-400">Überprüfen Sie alle Details und erfassen Sie die Unterschriften.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="triggerPrint()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 font-medium text-sm rounded-lg shadow transition flex items-center gap-2">
+                        <i data-lucide="printer" class="w-4 h-4"></i> als PDF / Drucken
+                    </button>
+                </div>
+            </div>
+
+            <!-- Print Protocol Card (Formatted for Paper / PDF Output) -->
+            <div id="printable-protocol" class="bg-white p-6 sm:p-10 rounded-xl shadow-md border border-slate-200 space-y-8">
+                
+                <!-- Protocol Document Header -->
+                <div class="border-b-2 border-slate-800 pb-6 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
+                    <div>
+                        <span class="text-xs font-bold text-blue-600 uppercase tracking-widest">Offizielles Dokument</span>
+                        <h1 class="text-2xl font-bold text-slate-900">Wohnungsabnahme-Protokoll</h1>
+                        <p class="text-sm text-slate-500">Mängeldokumentation (Vorher-Nachher) & Zustandserfassung</p>
+                    </div>
+                    <div class="text-left sm:text-right">
+                        <div class="text-xs text-slate-500 uppercase font-semibold">Datum der Abnahme</div>
+                        <div id="summary-date" class="text-lg font-bold text-slate-800">-</div>
+                    </div>
+                </div>
+
+                <!-- Stammdaten Summary Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm">
+                    <div>
+                        <h4 class="font-bold text-slate-800 mb-2 border-b border-slate-200 pb-1 flex items-center gap-1.5">
+                            <i data-lucide="building" class="w-4 h-4 text-blue-600"></i> Objekt & Adresse
+                        </h4>
+                        <p class="text-slate-700"><strong>Liegenschaft:</strong> <span id="summary-adresse">-</span></p>
+                        <p class="text-slate-700"><strong>Wohnung/Etage:</strong> <span id="summary-lage">-</span></p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-800 mb-2 border-b border-slate-200 pb-1 flex items-center gap-1.5">
+                            <i data-lucide="users" class="w-4 h-4 text-blue-600"></i> Parteien
+                        </h4>
+                        <p class="text-slate-700"><strong>Mieter (Auszug):</strong> <span id="summary-mieter-auszug">-</span></p>
+                        <p class="text-slate-700"><strong>Mieter (Einzug):</strong> <span id="summary-mieter-einzug">-</span></p>
+                        <p class="text-slate-700"><strong>Vermieter/Verwaltung:</strong> <span id="summary-vermieter">-</span></p>
+                        <p class="text-slate-700 text-xs text-slate-500 mt-1"><strong>Anwesende:</strong> <span id="summary-anwesende">-</span></p>
+                    </div>
+                </div>
+
+                <!-- Summary Defect / Vorher-Nachher Table -->
+                <div class="space-y-4">
+                    <h3 class="text-base font-bold text-slate-800 border-b border-slate-200 pb-2 flex items-center gap-2">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-500"></i> Protocol der Mängel & Schäden (Vorher-Nachher)
+                    </h3>
+                    
+                    <div id="summary-defects-container" class="space-y-4">
+                        <!-- Rendered Defect Cards with Images -->
+                    </div>
+                </div>
+
+                <!-- Zähler & Schlüssel Summary Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <!-- Key summary -->
+                    <div class="border border-slate-200 rounded-lg p-4">
+                        <h4 class="font-bold text-slate-800 mb-2 text-sm flex items-center gap-1.5">
+                            <i data-lucide="key" class="w-4 h-4 text-amber-500"></i> Schlüsselverzeichnis
+                        </h4>
+                        <ul id="summary-keys-list" class="text-xs space-y-1 text-slate-700 divide-y divide-slate-100">
+                            <!-- Dynamic Key Summary -->
+                        </ul>
+                    </div>
+
+                    <!-- Meter summary -->
+                    <div class="border border-slate-200 rounded-lg p-4">
+                        <h4 class="font-bold text-slate-800 mb-2 text-sm flex items-center gap-1.5">
+                            <i data-lucide="gauge" class="w-4 h-4 text-blue-500"></i> Zählerstände
+                        </h4>
+                        <ul id="summary-meters-list" class="text-xs space-y-1 text-slate-700 divide-y divide-slate-100">
+                            <!-- Dynamic Meter Summary -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Legal / Terms Notice CH -->
+                <div class="bg-slate-50 p-4 rounded-lg text-xs text-slate-600 border border-slate-200 leading-relaxed">
+                    <strong>Rechtlicher Hinweis:</strong> Mit der Unterzeichnung bestätigen die Parteien die Richtigkeit der obigen Zustandserfassung. Der ausziehende Mieter haftet für die im Protokoll als "Mieter" anerkannten Instandstellungskosten unter Berücksichtigung des Alters und des gewöhnlichen Verschleisses (Parifäre Lebensdauertabelle SVIT/Mietverband CH).
+                </div>
+
+                <!-- Signatures Area -->
+                <div class="pt-6 border-t border-slate-200 space-y-4 page-break">
+                    <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">Unterschriften</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Ausziehender Mieter Sign -->
+                        <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Ausziehende/r Mieter/in</label>
+                                <div class="bg-white border border-slate-300 rounded overflow-hidden relative">
+                                    <canvas id="sig-canvas-auszug" width="280" height="110" class="w-full h-28 cursor-crosshair"></canvas>
+                                    <button onclick="clearSignature('auszug')" class="no-print absolute top-1 right-1 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1.5 py-0.5 rounded">Löschen</button>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-[11px] text-slate-500 border-t border-slate-200 pt-1 flex justify-between">
+                                <span>Unterschrift & Datum</span>
+                            </div>
+                        </div>
+
+                        <!-- Einziehender Mieter Sign -->
+                        <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Einziehende/r Mieter/in</label>
+                                <div class="bg-white border border-slate-300 rounded overflow-hidden relative">
+                                    <canvas id="sig-canvas-einzug" width="280" height="110" class="w-full h-28 cursor-crosshair"></canvas>
+                                    <button onclick="clearSignature('einzug')" class="no-print absolute top-1 right-1 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1.5 py-0.5 rounded">Löschen</button>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-[11px] text-slate-500 border-t border-slate-200 pt-1 flex justify-between">
+                                <span>Unterschrift & Datum</span>
+                            </div>
+                        </div>
+
+                        <!-- Vermieter / Verwaltung Sign -->
+                        <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Vermieter / Verwaltung</label>
+                                <div class="bg-white border border-slate-300 rounded overflow-hidden relative">
+                                    <canvas id="sig-canvas-vermieter" width="280" height="110" class="w-full h-28 cursor-crosshair"></canvas>
+                                    <button onclick="clearSignature('vermieter')" class="no-print absolute top-1 right-1 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1.5 py-0.5 rounded">Löschen</button>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-[11px] text-slate-500 border-t border-slate-200 pt-1 flex justify-between">
+                                <span>Unterschrift & Datum</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODAL 1: Lebensdauer-Rechner (Parifäre Lebensdauertabelle CH) -->
+    <div id="parifary-modal" class="fixed inset-0 bg-slate-900/60 z-50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-5">
+            <div class="flex justify-between items-center border-b border-slate-200 pb-3">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
+                    <i data-lucide="calculator" class="w-5 h-5 text-blue-600"></i> Lebensdauer- & Zeitwertrechner (CH)
+                </h3>
+                <button onclick="closeParifaryModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <p class="text-xs text-slate-600">
+                Basierend auf den Richtlinien von SVIT Schweiz & Mieterverband (MV). Errechnet den verbleibenden Restwert bei Beschädigungen.
+            </p>
+
+            <div class="space-y-4 text-sm">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Bauteil / Einrichtung wählen</label>
+                    <select id="calc-item-select" onchange="applyParifaryPreset()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        <option value="custom">-- Benutzerdefiniert --</option>
+                        <option value="8">Wandanstrich / Tapeten (Dispersionsfarbe) - 8 Jahre</option>
+                        <option value="10">Kühlschrank / Geschirrspüler / Herd - 10 Jahre</option>
+                        <option value="15">Parkettboden (Versiegelung/Schleifen) - 15 Jahre</option>
+                        <option value="20">Teppichboden / Laminat - 10-15 Jahre</option>
+                        <option value="20">Sanitärarmaturen / Lavabo - 20 Jahre</option>
+                        <option value="30">Keramik-Bodenplatten / Fliesen - 30 Jahre</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-600 mb-1">Anschaffungskosten (CHF)</label>
+                        <input type="number" id="calc-cost" value="1000" oninput="calculateDepreciation()" class="w-full px-3 py-1.5 border border-slate-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-600 mb-1">Lebensdauer (Jahre)</label>
+                        <input type="number" id="calc-lifespan" value="10" oninput="calculateDepreciation()" class="w-full px-3 py-1.5 border border-slate-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-600 mb-1">Alter des Bauteils (Jahre)</label>
+                        <input type="number" id="calc-age" value="4" oninput="calculateDepreciation()" class="w-full px-3 py-1.5 border border-slate-300 rounded-md">
+                    </div>
+                </div>
+
+                <!-- Result Card -->
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 flex justify-between items-center">
+                    <div>
+                        <div class="text-xs text-blue-700 font-medium uppercase">Mieter-Anteil / Zeitwert:</div>
+                        <div id="calc-result-percent" class="text-2xl font-bold text-blue-900">60%</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-blue-700 font-medium uppercase">Zu zahlender Betrag:</div>
+                        <div id="calc-result-chf" class="text-2xl font-bold text-blue-900">CHF 600.00</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end pt-2">
+                <button onclick="closeParifaryModal()" class="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700">Schliessen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Saved Drafts Modal -->
+    <div id="saved-modal" class="fixed inset-0 bg-slate-900/60 z-50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-200 pb-3">
+                <h3 class="font-bold text-slate-800 text-base flex items-center gap-2">
+                    <i data-lucide="folder" class="w-5 h-5 text-blue-600"></i> Gespeicherte Protokolle
+                </h3>
+                <button onclick="closeLoadModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div id="saved-list-container" class="max-h-60 overflow-y-auto divide-y divide-slate-100 text-sm">
+                <!-- List of LocalStorage Items -->
+            </div>
+
+            <div class="flex justify-between pt-2">
+                <button onclick="clearAllSaved()" class="text-xs text-red-600 hover:underline">Alle löschen</button>
+                <button onclick="closeLoadModal()" class="px-4 py-1.5 bg-slate-200 text-slate-700 text-sm font-medium rounded-lg">Schliessen</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* MAIN STATE MANAGEMENT */
+        const DEFAULT_ROOMS = ['Entrée / Flur', 'Wohnzimmer', 'Schlafzimmer', 'Küche', 'Badezimmer / WC', 'Balkon / Terrasse', 'Keller / Nebenräume'];
+        const DEFAULT_COMPONENTS = ['Boden / Parquet / Fliesen', 'Wände / Decke', 'Fenster / Rollläden', 'Türen / Schlösser', 'Steckdosen / Licht', 'Heizkörper / Lüftung', 'Einbaugeräte / Möbel'];
+
+        let appData = {
+            id: Date.now().toString(),
+            created: new Date().toISOString(),
+            stammdaten: {
+                adresse: '',
+                lage: '',
+                datum: new Date().toISOString().split('T')[0],
+                mieterAuszugName: '',
+                mieterAuszugKontakt: '',
+                mieterEinzugName: '',
+                mieterEinzugKontakt: '',
+                vermieterName: '',
+                vermieterVertreter: '',
+                anwesendeWeitere: ''
+            },
+            raeume: {},
+            schluessel: [
+                { typ: 'Wohnungsschlüssel', erhalten: 3, retour: 3, bem: '' },
+                { typ: 'Haustürschlüssel', erhalten: 3, retour: 3, bem: '' },
+                { typ: 'Briefkastenschlüssel', erhalten: 2, retour: 2, bem: '' }
+            ],
+            zaehler: [
+                { typ: 'Strom (HT)', nr: '', stand: '', datum: new Date().toISOString().split('T')[0] },
+                { typ: 'Wasser Kalt', nr: '', stand: '', datum: new Date().toISOString().split('T')[0] }
+            ]
+        };
+
+        let activeRoomKey = '';
+
+        /* INITIALIZATION ON LOAD */
+        window.onload = function() {
+            initDefaultRooms();
+            loadAutoSavedData();
+            renderRoomNav();
+            renderActiveRoom();
+            renderKeyRows();
+            renderMeterRows();
+            initSignaturePads();
+            calculateDepreciation();
+            lucide.createIcons();
+        };
+
+        function initDefaultRooms() {
+            DEFAULT_ROOMS.forEach(roomName => {
+                if (!appData.raeume[roomName]) {
+                    appData.raeume[roomName] = {
+                        name: roomName,
+                        komponenten: DEFAULT_COMPONENTS.map(c => ({
+                            name: c,
+                            status: 'i.O.', // 'i.O.', 'Mangel', 'Nicht geprüft'
+                            beschreibung: '',
+                            kostenstelle: 'Mieter', // 'Mieter', 'Vermieter', 'Abnutzung', 'Versicherung'
+                            frist: '',
+                            statusBehebung: 'Offen',
+                            fotoVorher: null,
+                            fotoNachher: null
+                        }))
+                    };
+                }
+            });
+            activeRoomKey = DEFAULT_ROOMS[0];
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('border-blue-600', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-slate-500');
+            });
+
+            document.getElementById(`tab-content-${tabId}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+            activeBtn.classList.remove('border-transparent', 'text-slate-500');
+            activeBtn.classList.add('border-blue-600', 'text-blue-600');
+
+            if (tabId === 'zusammenfassung') {
+                renderSummaryView();
+            }
+        }
+
+        function updateData() {
+            appData.stammdaten.adresse = document.getElementById('objekt-adresse').value;
+            appData.stammdaten.lage = document.getElementById('objekt-lage').value;
+            appData.stammdaten.datum = document.getElementById('objekt-datum').value;
+            appData.stammdaten.mieterAuszugName = document.getElementById('mieter-auszug-name').value;
+            appData.stammdaten.mieterAuszugKontakt = document.getElementById('mieter-auszug-kontakt').value;
+            appData.stammdaten.mieterEinzugName = document.getElementById('mieter-einzug-name').value;
+            appData.stammdaten.mieterEinzugKontakt = document.getElementById('mieter-einzug-kontakt').value;
+            appData.stammdaten.vermieterName = document.getElementById('vermieter-name').value;
+            appData.stammdaten.vermieterVertreter = document.getElementById('vermieter-vertreter').value;
+            appData.stammdaten.anwesendeWeitere = document.getElementById('anwesende-weitere').value;
+
+            autoSave();
+            updateDefectBadge();
+        }
+
+        function autoSave() {
+            try {
+                localStorage.setItem(`immo_protokoll_${appData.id}`, JSON.stringify(appData));
+                localStorage.setItem('immo_protokoll_latest_id', appData.id);
+                document.getElementById('save-status-text').innerText = 'Entwurf automatisch gespeichert um ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                updateSavedCount();
+            } catch(e) {
+                console.error("LocalStorage Save Error", e);
+            }
+        }
+
+        function loadAutoSavedData() {
+            const latestId = localStorage.getItem('immo_protokoll_latest_id');
+            if (latestId) {
+                const saved = localStorage.getItem(`immo_protokoll_${latestId}`);
+                if (saved) {
+                    try {
+                        appData = JSON.parse(saved);
+                        // Populate form inputs
+                        document.getElementById('objekt-adresse').value = appData.stammdaten.adresse || '';
+                        document.getElementById('objekt-lage').value = appData.stammdaten.lage || '';
+                        document.getElementById('objekt-datum').value = appData.stammdaten.datum || new Date().toISOString().split('T')[0];
+                        document.getElementById('mieter-auszug-name').value = appData.stammdaten.mieterAuszugName || '';
+                        document.getElementById('mieter-auszug-kontakt').value = appData.stammdaten.mieterAuszugKontakt || '';
+                        document.getElementById('mieter-einzug-name').value = appData.stammdaten.mieterEinzugName || '';
+                        document.getElementById('mieter-einzug-kontakt').value = appData.stammdaten.mieterEinzugKontakt || '';
+                        document.getElementById('vermieter-name').value = appData.stammdaten.vermieterName || '';
+                        document.getElementById('vermieter-vertreter').value = appData.stammdaten.vermieterVertreter || '';
+                        document.getElementById('anwesende-weitere').value = appData.stammdaten.anwesendeWeitere || '';
+                    } catch(e) { console.error(e); }
+                }
+            }
+            updateSavedCount();
+            updateDefectBadge();
+        }
+
+        function updateDefectBadge() {
+            let count = 0;
+            Object.values(appData.raeume).forEach(room => {
+                room.komponenten.forEach(comp => {
+                    if (comp.status === 'Mangel') count++;
+                });
+            });
+            const badge = document.getElementById('defect-counter-badge');
+            if (count > 0) {
+                badge.innerText = `${count} Mängel`;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function renderRoomNav() {
+            const nav = document.getElementById('room-list-nav');
+            nav.innerHTML = '';
+
+            Object.keys(appData.raeume).forEach(roomKey => {
+                const room = appData.raeume[roomKey];
+                const defectCount = room.komponenten.filter(c => c.status === 'Mangel').length;
+                const isActive = roomKey === activeRoomKey;
+
+                const btn = document.createElement('button');
+                btn.onclick = () => { activeRoomKey = roomKey; renderRoomNav(); renderActiveRoom(); };
+                btn.className = `w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex justify-between items-center transition ${
+                    isActive ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-700'
+                }`;
+
+                btn.innerHTML = `
+                    <span class="truncate">${room.name}</span>
+                    ${defectCount > 0 ? `<span class="px-2 py-0.5 text-xs rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'} font-semibold">${defectCount}</span>` : ''}
+                `;
+                nav.appendChild(btn);
+            });
+        }
+
+        function renderActiveRoom() {
+            const container = document.getElementById('room-detail-container');
+            const room = appData.raeume[activeRoomKey];
+            if (!room) return;
+
+            let html = `
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-6">
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+                        <h3 class="text-xl font-bold text-slate-800">${room.name}</h3>
+                        <button onclick="addCustomComponent('${room.name}')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg flex items-center gap-1">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Bauteil hinzufügen
+                        </button>
+                    </div>
+
+                    <div class="space-y-4">
+            `;
+
+            room.komponenten.forEach((comp, idx) => {
+                const isDefect = comp.status === 'Mangel';
+
+                html += `
+                    <div class="p-4 rounded-lg border ${isDefect ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-white'} transition">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <span class="font-semibold text-slate-800 text-sm">${comp.name}</span>
+                            
+                            <!-- Status Buttons -->
+                            <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs w-full sm:w-auto">
+                                <button onclick="setComponentStatus('${room.name}', ${idx}, 'i.O.')" class="flex-1 sm:flex-none px-3 py-1 rounded-md font-medium transition ${comp.status === 'i.O.' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+                                    i.O. (In Ordnung)
+                                </button>
+                                <button onclick="setComponentStatus('${room.name}', ${idx}, 'Mangel')" class="flex-1 sm:flex-none px-3 py-1 rounded-md font-medium transition ${comp.status === 'Mangel' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+                                    Mangel / Schaden
+                                </button>
+                                <button onclick="setComponentStatus('${room.name}', ${idx}, 'Nicht geprüft')" class="flex-1 sm:flex-none px-3 py-1 rounded-md font-medium transition ${comp.status === 'Nicht geprüft' ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+                                    Nicht geprüft
+                                </button>
+                            </div>
+                        </div>
+
+                        ${isDefect ? `
+                            <div class="mt-4 pt-4 border-t border-amber-200/60 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 mb-1">Mangelbeschreibung *</label>
+                                        <textarea onchange="updateCompField('${room.name}', ${idx}, 'beschreibung', this.value)" rows="2" placeholder="z.B. Parquet tief Kratzer ca. 15cm..." class="w-full p-2 border border-slate-300 rounded-md text-slate-800 bg-white">${comp.beschreibung || ''}</textarea>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block font-semibold text-slate-700 mb-1">Kosten zulasten</label>
+                                            <select onchange="updateCompField('${room.name}', ${idx}, 'kostenstelle', this.value)" class="w-full p-1.5 border border-slate-300 rounded-md bg-white">
+                                                <option value="Mieter" ${comp.kostenstelle==='Mieter'?'selected':''}>Mieter</option>
+                                                <option value="Vermieter" ${comp.kostenstelle==='Vermieter'?'selected':''}>Vermieter</option>
+                                                <option value="Abnutzung" ${comp.kostenstelle==='Abnutzung'?'selected':''}>Normale Abnutzung</option>
+                                                <option value="Versicherung" ${comp.kostenstelle==='Versicherung'?'selected':''}>Versicherung</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block font-semibold text-slate-700 mb-1">Behebungsfrist</label>
+                                            <input type="date" value="${comp.frist || ''}" onchange="updateCompField('${room.name}', ${idx}, 'frist', this.value)" class="w-full p-1.5 border border-slate-300 rounded-md bg-white">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Vorher / Nachher Foto Upload Column -->
+                                <div class="grid grid-cols-2 gap-2">
+                                    <!-- Vorher Bild (Auszug) -->
+                                    <div class="border border-dashed border-slate-300 p-2 rounded-md bg-white text-center flex flex-col justify-between">
+                                        <div class="font-semibold text-slate-600 mb-1">Foto Vorher (Auszug)</div>
+                                        ${comp.fotoVorher ? `
+                                            <div class="relative group my-1">
+                                                <img src="${comp.fotoVorher}" class="h-20 w-full object-cover rounded border">
+                                                <button onclick="removePhoto('${room.name}', ${idx}, 'fotoVorher')" class="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full opacity-80 hover:opacity-100"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+                                            </div>
+                                        ` : `
+                                            <label class="cursor-pointer my-2 inline-flex flex-col items-center text-slate-400 hover:text-blue-600">
+                                                <i data-lucide="camera" class="w-6 h-6 mb-1"></i>
+                                                <span>Foto hochladen</span>
+                                                <input type="file" accept="image/*" class="hidden" onchange="uploadPhoto('${room.name}', ${idx}, 'fotoVorher', this)">
+                                            </label>
+                                        `}
+                                    </div>
+
+                                    <!-- Nachher Bild (Einzug / Behebung) -->
+                                    <div class="border border-dashed border-slate-300 p-2 rounded-md bg-white text-center flex flex-col justify-between">
+                                        <div class="font-semibold text-slate-600 mb-1">Foto Nachher (Einzug)</div>
+                                        ${comp.fotoNachher ? `
+                                            <div class="relative group my-1">
+                                                <img src="${comp.fotoNachher}" class="h-20 w-full object-cover rounded border">
+                                                <button onclick="removePhoto('${room.name}', ${idx}, 'fotoNachher')" class="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full opacity-80 hover:opacity-100"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+                                            </div>
+                                        ` : `
+                                            <label class="cursor-pointer my-2 inline-flex flex-col items-center text-slate-400 hover:text-emerald-600">
+                                                <i data-lucide="camera" class="w-6 h-6 mb-1"></i>
+                                                <span>Foto hochladen</span>
+                                                <input type="file" accept="image/*" class="hidden" onchange="uploadPhoto('${room.name}', ${idx}, 'fotoNachher', this)">
+                                            </label>
+                                        `}
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            html += `</div></div>`;
+            container.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function setComponentStatus(roomName, idx, status) {
+            appData.raeume[roomName].komponenten[idx].status = status;
+            updateData();
+            renderRoomNav();
+            renderActiveRoom();
+        }
+
+        function updateCompField(roomName, idx, field, val) {
+            appData.raeume[roomName].komponenten[idx][field] = val;
+            updateData();
+        }
+
+        function uploadPhoto(roomName, idx, field, input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    appData.raeume[roomName].komponenten[idx][field] = e.target.result;
+                    updateData();
+                    renderActiveRoom();
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function removePhoto(roomName, idx, field) {
+            appData.raeume[roomName].komponenten[idx][field] = null;
+            updateData();
+            renderActiveRoom();
+        }
+
+        function addCustomRoom() {
+            const input = document.getElementById('new-room-input');
+            const name = input.value.trim();
+            if (name && !appData.raeume[name]) {
+                appData.raeume[name] = {
+                    name: name,
+                    komponenten: DEFAULT_COMPONENTS.map(c => ({
+                        name: c, status: 'i.O.', beschreibung: '', kostenstelle: 'Mieter', frist: '', statusBehebung: 'Offen', fotoVorher: null, fotoNachher: null
+                    }))
+                };
+                input.value = '';
+                activeRoomKey = name;
+                updateData();
+                renderRoomNav();
+                renderActiveRoom();
+            }
+        }
+
+        function addCustomComponent(roomName) {
+            const name = prompt("Name des Bauteils/Komponente:");
+            if (name) {
+                appData.raeume[roomName].komponenten.push({
+                    name: name, status: 'i.O.', beschreibung: '', kostenstelle: 'Mieter', frist: '', statusBehebung: 'Offen', fotoVorher: null, fotoNachher: null
+                });
+                updateData();
+                renderActiveRoom();
+            }
+        }
+
+        function renderKeyRows() {
+            const tbody = document.getElementById('keys-table-body');
+            tbody.innerHTML = '';
+            appData.schluessel.forEach((k, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2"><input type="text" value="${k.typ}" oninput="appData.schluessel[${idx}].typ=this.value; updateData()" class="w-full bg-transparent border-b border-slate-200 py-1"></td>
+                    <td class="p-2"><input type="number" value="${k.erhalten}" oninput="appData.schluessel[${idx}].erhalten=this.value; updateData()" class="w-full bg-transparent border-b border-slate-200 py-1"></td>
+                    <td class="p-2"><input type="number" value="${k.retour}" oninput="appData.schluessel[${idx}].retour=this.value; updateData()" class="w-full bg-transparent border-b border-slate-200 py-1"></td>
+                    <td class="p-2"><input type="text" value="${k.bem}" placeholder="z.B. Nr. K-102" oninput="appData.schluessel[${idx}].bem=this.value; updateData()" class="w-full bg-transparent border-b border-slate-200 py-1"></td>
+                    <td class="p-2 text-center"><button onclick="appData.schluessel.splice(${idx},1); updateData(); renderKeyRows()" class="text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            lucide.createIcons();
+        }
+
+        function addKeyRow() {
+            appData.schluessel.push({ typ: 'Zusatzschlüssel', erhalten: 1, retour: 1, bem: '' });
+            updateData();
+            renderKeyRows();
+        }
+
+        function renderMeterRows() {
+            const tbody = document.getElementById('meters-table-body');
+            tbody.innerHTML = '';
+            appData.zaehler.forEach((m, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2"><input type="text" value="${m.typ}" oninput="appData.zaehler[${idx}].typ=this.value; updateData()" class="w-full bg-transparent border-b border-slate-200 py-1"></td>
+                    <td class="p-2"><input type="text" value="${m.nr}" placeholder="Nr. 849204" oninput="appData.zaehler[${idx}].nr=this.value; updateData()" class="w-full bg-transparent border-b border-slate-200 py-1"></td>
+                    <td class="p-2"><input type="text" value="${m.stand}" placeholder="0000.0 kWh" oninput="appData.zaehler[${idx}].stand=this.value; updateData()" class="w-full bg-transparent border-b border-slate-200 py-1"></td>
+                    <td class="p-2"><input type="date" value="${m.datum}" oninput="appData.zaehler[${idx}].datum=this.value; updateData()" class="w-full bg-transparent border-b border-slate-200 py-1"></td>
+                    <td class="p-2 text-center"><button onclick="appData.zaehler.splice(${idx},1); updateData(); renderMeterRows()" class="text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            lucide.createIcons();
+        }
+
+        function addMeterRow() {
+            appData.zaehler.push({ typ: 'Heizung / Gas', nr: '', stand: '', datum: new Date().toISOString().split('T')[0] });
+            updateData();
+            renderMeterRows();
+        }
+
+        function renderSummaryView() {
+            document.getElementById('summary-date').innerText = appData.stammdaten.datum || '-';
+            document.getElementById('summary-adresse').innerText = appData.stammdaten.adresse || '-';
+            document.getElementById('summary-lage').innerText = appData.stammdaten.lage || '-';
+            document.getElementById('summary-mieter-auszug').innerText = `${appData.stammdaten.mieterAuszugName || '-'} (${appData.stammdaten.mieterAuszugKontakt || '-'})`;
+            document.getElementById('summary-mieter-einzug').innerText = `${appData.stammdaten.mieterEinzugName || '-'} (${appData.stammdaten.mieterEinzugKontakt || '-'})`;
+            document.getElementById('summary-vermieter').innerText = `${appData.stammdaten.vermieterName || '-'} (${appData.stammdaten.vermieterVertreter || '-'})`;
+            document.getElementById('summary-anwesende').innerText = appData.stammdaten.anwesendeWeitere || 'Keine weiteren';
+
+            // Mängel / Summary Cards
+            const container = document.getElementById('summary-defects-container');
+            container.innerHTML = '';
+
+            let hasDefects = false;
+
+            Object.values(appData.raeume).forEach(room => {
+                room.komponenten.forEach(comp => {
+                    if (comp.status === 'Mangel') {
+                        hasDefects = true;
+                        const card = document.createElement('div');
+                        card.className = "border border-amber-200 bg-amber-50/20 rounded-lg p-4 space-y-3";
+                        card.innerHTML = `
+                            <div class="flex justify-between items-start border-b border-slate-200 pb-2">
+                                <div>
+                                    <span class="font-bold text-slate-800 text-sm">${room.name}</span> &rarr; <span class="font-semibold text-slate-700 text-sm">${comp.name}</span>
+                                </div>
+                                <span class="bg-red-100 text-red-800 text-xs px-2.5 py-0.5 rounded-full font-semibold">Mangel</span>
+                            </div>
+
+                            <p class="text-xs text-slate-700"><strong>Mangel-Beschreibung:</strong> ${comp.beschreibung || 'Keine Angabe'}</p>
+
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-slate-600 bg-white p-2 rounded border border-slate-100">
+                                <div><strong>Kostenübernahme:</strong> ${comp.kostenstelle}</div>
+                                <div><strong>Frist:</strong> ${comp.frist || 'Sofort / Keine'}</div>
+                            </div>
+
+                            <!-- Vorher-Nachher Foto Vergleich im Druck/Protokoll -->
+                            <div class="grid grid-cols-2 gap-4 pt-2">
+                                <div>
+                                    <div class="text-[11px] font-semibold text-slate-500 mb-1">Vorher (Auszug)</div>
+                                    ${comp.fotoVorher ? `<img src="${comp.fotoVorher}" class="h-28 w-full object-cover rounded border">` : `<div class="h-20 bg-slate-100 text-slate-400 text-xs flex items-center justify-center rounded border border-dashed">Kein Vorher-Bild</div>`}
+                                </div>
+                                <div>
+                                    <div class="text-[11px] font-semibold text-slate-500 mb-1">Nachher (Instandstellung)</div>
+                                    ${comp.fotoNachher ? `<img src="${comp.fotoNachher}" class="h-28 w-full object-cover rounded border">` : `<div class="h-20 bg-slate-100 text-slate-400 text-xs flex items-center justify-center rounded border border-dashed">Kein Nachher-Bild</div>`}
+                                </div>
+                            </div>
+                        `;
+                        container.appendChild(card);
+                    }
+                });
+            });
+
+            if (!hasDefects) {
+                container.innerHTML = `<div class="p-4 bg-emerald-50 text-emerald-800 text-sm rounded-lg border border-emerald-200 flex items-center gap-2">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i> Keine Mängel erfasst. Die Wohnung wird in ordnungsgemässem Zustand übergeben.
+                </div>`;
+            }
+
+            // Schlüssel Summary
+            const keyList = document.getElementById('summary-keys-list');
+            keyList.innerHTML = appData.schluessel.map(k => `
+                <li class="py-1 flex justify-between">
+                    <span>${k.typ} (${k.bem || 'Standard'}):</span>
+                    <span class="font-semibold">${k.retour} von ${k.erhalten} Schlüssel retour</span>
+                </li>
+            `).join('');
+
+            // Zähler Summary
+            const meterList = document.getElementById('summary-meters-list');
+            meterList.innerHTML = appData.zaehler.map(m => `
+                <li class="py-1 flex justify-between">
+                    <span>${m.typ} (${m.nr || 'Keine Nr.'}):</span>
+                    <span class="font-semibold">${m.stand || '0'} (Datum: ${m.datum})</span>
+                </li>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        function triggerPrint() {
+            renderSummaryView();
+            window.print();
+        }
+
+        const sigCanvases = {};
+
+        function initSignaturePads() {
+            ['auszug', 'einzug', 'vermieter'].forEach(type => {
+                const canvas = document.getElementById(`sig-canvas-${type}`);
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                let isDrawing = false;
+
+                function getPos(e) {
+                    const rect = canvas.getBoundingClientRect();
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    return {
+                        x: clientX - rect.left,
+                        y: clientY - rect.top
+                    };
+                }
+
+                function startDraw(e) {
+                    isDrawing = true;
+                    const pos = getPos(e);
+                    ctx.beginPath();
+                    ctx.moveTo(pos.x, pos.y);
+                }
+
+                function draw(e) {
+                    if (!isDrawing) return;
+                    const pos = getPos(e);
+                    ctx.lineWidth = 2;
+                    ctx.lineCap = 'round';
+                    ctx.strokeStyle = '#0f172a';
+                    ctx.lineTo(pos.x, pos.y);
+                    ctx.stroke();
+                }
+
+                function stopDraw() {
+                    isDrawing = false;
+                }
+
+                canvas.addEventListener('mousedown', startDraw);
+                canvas.addEventListener('mousemove', draw);
+                canvas.addEventListener('mouseup', stopDraw);
+
+                canvas.addEventListener('touchstart', startDraw, {passive: true});
+                canvas.addEventListener('touchmove', draw, {passive: true});
+                canvas.addEventListener('touchend', stopDraw);
+
+                sigCanvases[type] = { canvas, ctx };
+            });
+        }
+
+        function clearSignature(type) {
+            if (sigCanvases[type]) {
+                const { canvas, ctx } = sigCanvases[type];
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function openParifaryModal() {
+            document.getElementById('parifary-modal').classList.remove('hidden');
+        }
+
+        function closeParifaryModal() {
+            document.getElementById('parifary-modal').classList.add('hidden');
+        }
+
+        function applyParifaryPreset() {
+            const val = document.getElementById('calc-item-select').value;
+            if (val !== 'custom') {
+                document.getElementById('calc-lifespan').value = val;
+                calculateDepreciation();
+            }
+        }
+
+        function calculateDepreciation() {
+            const cost = parseFloat(document.getElementById('calc-cost').value) || 0;
+            const lifespan = parseFloat(document.getElementById('calc-lifespan').value) || 1;
+            const age = parseFloat(document.getElementById('calc-age').value) || 0;
+
+            let remainingPercent = 0;
+            if (age < lifespan) {
+                remainingPercent = ((lifespan - age) / lifespan) * 100;
+            }
+
+            const remainingValue = (cost * remainingPercent) / 100;
+
+            document.getElementById('calc-result-percent').innerText = `${Math.round(remainingPercent)}%`;
+            document.getElementById('calc-result-chf').innerText = `CHF ${remainingValue.toFixed(2)}`;
+        }
+
+        function openLoadModal() {
+            document.getElementById('saved-modal').classList.remove('hidden');
+            const container = document.getElementById('saved-list-container');
+            container.innerHTML = '';
+
+            let keys = Object.keys(localStorage).filter(k => k.startsWith('immo_protokoll_') && k !== 'immo_protokoll_latest_id');
+
+            if (keys.length === 0) {
+                container.innerHTML = `<div class="p-4 text-center text-xs text-slate-500">Keine vorherigen Protokolle gefunden.</div>`;
+                return;
+            }
+
+            keys.forEach(k => {
+                try {
+                    const data = JSON.parse(localStorage.getItem(k));
+                    const div = document.createElement('div');
+                    div.className = "py-2.5 flex justify-between items-center";
+                    div.innerHTML = `
+                        <div>
+                            <div class="font-semibold text-slate-800 text-xs">${data.stammdaten.adresse || 'Unbenanntes Objekt'}</div>
+                            <div class="text-[10px] text-slate-500">Erstellt: ${new Date(data.created).toLocaleDateString()}</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="loadProtocol('${data.id}')" class="px-2.5 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-500">Laden</button>
+                            <button onclick="deleteProtocol('${k}')" class="text-red-500 hover:text-red-700 text-xs"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                } catch(e) {}
+            });
+            lucide.createIcons();
+        }
+
+        function closeLoadModal() {
+            document.getElementById('saved-modal').classList.add('hidden');
+        }
+
+        function updateSavedCount() {
+            let count = Object.keys(localStorage).filter(k => k.startsWith('immo_protokoll_') && k !== 'immo_protokoll_latest_id').length;
+            document.getElementById('saved-count').innerText = count;
+        }
+
+        function loadProtocol(id) {
+            const saved = localStorage.getItem(`immo_protokoll_${id}`);
+            if (saved) {
+                appData = JSON.parse(saved);
+                loadAutoSavedData();
+                renderRoomNav();
+                renderActiveRoom();
+                renderKeyRows();
+                renderMeterRows();
+                closeLoadModal();
+            }
+        }
+
+        function deleteProtocol(key) {
+            localStorage.removeItem(key);
+            openLoadModal();
+            updateSavedCount();
+        }
+
+        function clearAllSaved() {
+            if (confirm("Möchten Sie wirklich alle gespeicherten Entwürfe löschen?")) {
+                Object.keys(localStorage).forEach(k => {
+                    if (k.startsWith('immo_protokoll_')) localStorage.removeItem(k);
+                });
+                closeLoadModal();
+                updateSavedCount();
+            }
+        }
+
+        function createNewProtocol() {
+            if (confirm("Neues Protokoll starten? Nicht gespeicherte Änderungen gehen verloren.")) {
+                appData = {
+                    id: Date.now().toString(),
+                    created: new Date().toISOString(),
+                    stammdaten: { adresse: '', lage: '', datum: new Date().toISOString().split('T')[0], mieterAuszugName: '', mieterAuszugKontakt: '', mieterEinzugName: '', mieterEinzugKontakt: '', vermieterName: '', vermieterVertreter: '', anwesendeWeitere: '' },
+                    raeume: {},
+                    schluessel: [{ typ: 'Wohnungsschlüssel', erhalten: 3, retour: 3, bem: '' }],
+                    zaehler: [{ typ: 'Strom (HT)', nr: '', stand: '', datum: new Date().toISOString().split('T')[0] }]
+                };
+                initDefaultRooms();
+                loadAutoSavedData();
+                renderRoomNav();
+                renderActiveRoom();
+                renderKeyRows();
+                renderMeterRows();
+                switchTab('stammdaten');
+            }
+        }
+    </script>
+</body>
+</html>
